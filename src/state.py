@@ -18,10 +18,10 @@ class StateManager:
         if not content.strip():
             return None
             
-        blocks = content.split('---')
+        blocks = content.split('\n---\n')
         first_block = blocks[0].strip()
         
-        remaining_content = '---'.join(blocks[1:]).strip()
+        remaining_content = '\n---\n'.join(blocks[1:])
         with open(self.ctx_file, 'w', encoding='utf-8') as f:
             f.write(remaining_content)
             
