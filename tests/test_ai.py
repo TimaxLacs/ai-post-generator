@@ -1,12 +1,15 @@
 # tests/test_ai.py
 import pytest
+import os
 from unittest.mock import patch, MagicMock, AsyncMock
+from openai import OpenAIError
 from src.ai import AIPipeline
 
 @pytest.mark.asyncio
 @patch("src.ai.AsyncOpenAI")
 async def test_ai_pipeline_approved_first_try(mock_openai):
     mock_client = MagicMock()
+    mock_client.close = AsyncMock()
     mock_openai.return_value = mock_client
     
     # Use AsyncMock for the async method
@@ -23,11 +26,15 @@ async def test_ai_pipeline_approved_first_try(mock_openai):
     assert status is True
     assert final_text == "Draft Post"
     assert feedback is None
+    
+    await pipeline.close()
+    mock_client.close.assert_awaited_once()
 
 @pytest.mark.asyncio
 @patch("src.ai.AsyncOpenAI")
 async def test_ai_pipeline_rejected_three_times(mock_openai):
     mock_client = MagicMock()
+    mock_client.close = AsyncMock()
     mock_openai.return_value = mock_client
     
     # Use AsyncMock for the async method
@@ -48,3 +55,62 @@ async def test_ai_pipeline_rejected_three_times(mock_openai):
     assert status is False
     assert final_text == "Draft 3"
     assert feedback == "Bad 3"
+    
+    await pipeline.close()
+    mock_client.close.assert_awaited_once()
+
+@patch.dict(os.environ, clear=True)
+def test_ai_pipeline_missing_api_key():
+    with pytest.raises(ValueError, match="API key must be provided or set in OPENROUTER_API_KEY environment variable"):
+        AIPipeline()
+
+@pytest.mark.asyncio
+@patch("src.ai.AsyncOpenAI")
+async def test_ai_pipeline_empty_context(mock_openai):
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_openai.return_value = mock_client
+
+    pipeline = AIPipeline(api_key="test")
+    with pytest.raises(ValueError, match="Context cannot be empty"):
+        await pipeline.process_block("")
+    
+    with pytest.raises(ValueError, match="Context cannot be empty"):
+        await pipeline.process_block("   ")
+        
+    await pipeline.close()
+
+@pytest.mark.asyncio
+@patch("src.ai.AsyncOpenAI")
+async def test_ai_pipeline_openai_error_generation(mock_openai):
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_openai.return_value = mock_client
+    
+    mock_client.chat.completions.create = AsyncMock()
+    mock_client.chat.completions.create.side_effect = OpenAIError("API is down")
+    
+    pipeline = AIPipeline(api_key="test")
+    with pytest.raises(RuntimeError, match="Error during generation: API is down"):
+        await pipeline.process_block("Test Context")
+        
+    await pipeline.close()
+
+@pytest.mark.asyncio
+@patch("src.ai.AsyncOpenAI")
+async def test_ai_pipeline_openai_error_moderation(mock_openai):
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_openai.return_value = mock_client
+    
+    mock_client.chat.completions.create = AsyncMock()
+    mock_client.chat.completions.create.side_effect = [
+        MagicMock(choices=[MagicMock(message=MagicMock(content="Draft Post"))]),
+        OpenAIError("API is down")
+    ]
+    
+    pipeline = AIPipeline(api_key="test")
+    with pytest.raises(RuntimeError, match="Error during moderation: API is down"):
+        await pipeline.process_block("Test Context")
+        
+    await pipeline.close()
