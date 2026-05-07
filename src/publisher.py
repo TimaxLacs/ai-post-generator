@@ -1,5 +1,4 @@
 import os
-import re
 import httpx
 import logging
 import asyncio
@@ -18,19 +17,26 @@ class Publisher:
     async def close(self):
         await self.client.aclose()
 
-    def extract_images(self, text: str) -> tuple[str, list]:
-        pattern = r"\[image:\s*(.+?)\]"
-        images = re.findall(pattern, text)
-        clean_text = re.sub(pattern, "", text).replace("  ", " ").strip()
-        return clean_text, images
-
     async def publish_tg(self, text: str, images: list[str]) -> bool:
         if images:
-            url = f"https://api.telegram.org/bot{self.tg_token}/sendPhoto"
-            with open(images[0], "rb") as f:
-                files = {"photo": f}
-                data = {"chat_id": self.tg_chat, "caption": text}
-                res = await self.client.post(url, data=data, files=files)
+            if len(text) <= 1024:
+                url = f"https://api.telegram.org/bot{self.tg_token}/sendPhoto"
+                with open(images[0], "rb") as f:
+                    files = {"photo": f}
+                    data = {"chat_id": self.tg_chat, "caption": text}
+                    res = await self.client.post(url, data=data, files=files)
+            else:
+                # Text too long for caption (max 1024). Send photo first, then text.
+                url_photo = f"https://api.telegram.org/bot{self.tg_token}/sendPhoto"
+                with open(images[0], "rb") as f:
+                    files = {"photo": f}
+                    data = {"chat_id": self.tg_chat}
+                    res_photo = await self.client.post(url_photo, data=data, files=files)
+                    res_photo.raise_for_status()
+                
+                url = f"https://api.telegram.org/bot{self.tg_token}/sendMessage"
+                payload = {"chat_id": self.tg_chat, "text": text}
+                res = await self.client.post(url, json=payload)
         else:
             url = f"https://api.telegram.org/bot{self.tg_token}/sendMessage"
             payload = {"chat_id": self.tg_chat, "text": text}
@@ -115,12 +121,11 @@ class Publisher:
             return False
         return "response" in resp_data
 
-    async def publish(self, raw_text: str) -> bool:
-        clean_text, images = self.extract_images(raw_text)
-        
+    async def publish(self, text: str, images: Optional[list[str]] = None) -> bool:
+        images = images or []
         results = await asyncio.gather(
-            self.publish_tg(clean_text, images),
-            self.publish_vk(clean_text, images),
+            self.publish_tg(text, images),
+            self.publish_vk(text, images),
             return_exceptions=True
         )
         

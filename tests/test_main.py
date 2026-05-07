@@ -12,7 +12,7 @@ async def test_main_success_flow(MockPub, MockAI, MockState):
     mock_pub = MockPub.return_value
     
     # Setup mock behavior
-    mock_state.pop_next_block = AsyncMock(return_value="Test Context")
+    mock_state.pop_next_block = AsyncMock(return_value="Test Context [image: pic.png]")
     mock_state.archive_block = AsyncMock()
     mock_ai.process_block = AsyncMock(return_value=(True, "Draft", None))
     mock_ai.close = AsyncMock()
@@ -22,8 +22,9 @@ async def test_main_success_flow(MockPub, MockAI, MockState):
     result = await main.run()
     
     assert result is True
-    mock_state.archive_block.assert_called_once_with("Test Context")
-    mock_pub.publish.assert_called_once_with("Draft")
+    mock_ai.process_block.assert_called_once_with("Test Context")
+    mock_state.archive_block.assert_called_once_with("Test Context [image: pic.png]")
+    mock_pub.publish.assert_called_once_with("Draft", ["pic.png"])
 
 @pytest.mark.asyncio
 @patch("main.StateManager")

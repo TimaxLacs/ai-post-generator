@@ -1,8 +1,15 @@
 import asyncio
+import re
 from dotenv import load_dotenv
 from src.state import StateManager
 from src.ai import AIPipeline
 from src.publisher import Publisher
+
+def extract_images(text: str) -> tuple[str, list]:
+    pattern = r"\[image:\s*(.+?)\]"
+    images = re.findall(pattern, text)
+    clean_text = re.sub(pattern, "", text).replace("  ", " ").strip()
+    return clean_text, images
 
 async def run() -> bool:
     load_dotenv()
@@ -19,16 +26,18 @@ async def run() -> bool:
                 return True
                 
             try:
-                print(f"Processing context: {context[:50]}...")
-                approved, draft, feedback = await ai.process_block(context)
+                clean_context, images = extract_images(context)
+                print(f"Processing context: {clean_context[:50]}...")
+                approved, draft, feedback = await ai.process_block(clean_context)
                 
                 if not approved:
                     print("Post rejected after 3 attempts. Saving for manual review...")
+                    # save context so user knows what it was originally
                     await state.save_manual_review(context, draft, feedback)
                     continue # Try next block
                     
                 print("Post approved! Publishing...")
-                pub_success = await publisher.publish(draft)
+                pub_success = await publisher.publish(draft, images)
                 
                 if pub_success:
                     print("Published successfully. Archiving...")
