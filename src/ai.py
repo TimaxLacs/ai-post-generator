@@ -1,30 +1,23 @@
 import os
 from typing import Tuple, Optional
 from openai import AsyncOpenAI, OpenAIError
+from src.config import settings
 
 class AIPipeline:
-    def __init__(
-        self, 
-        api_key: Optional[str] = None, 
-        base_url: str = "https://openrouter.ai/api/v1",
-        gen_model: str = "openrouter/free",
-        mod_model: str = "openrouter/free"
-    ) -> None:
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            raise ValueError("API key must be provided or set in OPENROUTER_API_KEY environment variable")
+    def __init__(self) -> None:
+        if not settings.openrouter_api_key:
+            raise ValueError("API key must be provided in config")
             
         self.client = AsyncOpenAI(
-            api_key=self.api_key, 
-            base_url=base_url,
+            api_key=settings.openrouter_api_key, 
+            base_url="https://openrouter.ai/api/v1",
             timeout=30.0,
             max_retries=3
         )
-        self.gen_model = gen_model
-        self.mod_model = mod_model
-        
-        self.gen_sys = "You are a professional social media manager. Write an engaging post based on the context. СТРОГОЕ ПРАВИЛО: НЕ ИСПОЛЬЗУЙ markdown форматирование (никаких звездочек **, решеток ### и т.д.). Текст должен быть чистым. Длина поста СТРОГО до 900 символов."
-        self.mod_sys = "You are a strict editor. Reply EXACTLY with 'APPROVED' if the post is perfect. Otherwise, write constructive feedback. Убедись, что нет markdown форматирования и длина до 900 символов."
+        self.gen_model = settings.gen_model
+        self.mod_model = settings.mod_model
+        self.gen_sys = settings.gen_sys_prompt
+        self.mod_sys = settings.mod_sys_prompt
 
     async def close(self) -> None:
         if hasattr(self.client, "close") and callable(self.client.close):
@@ -63,7 +56,7 @@ class AIPipeline:
             error_context="moderation"
         )
 
-    async def process_block(self, context: str) -> Tuple[bool, str, Optional[str]]:
+    async def process_block(self, context: str) -> Tuple[bool, str, str]:
         if not context or not context.strip():
             raise ValueError("Context cannot be empty")
 
@@ -75,9 +68,10 @@ class AIPipeline:
             draft = await self.generate(context, feedback_history)
             feedback = await self.moderate(draft)
             
-            is_approved = feedback.strip().upper() == "APPROVED"
+            # Robust check for APPROVED
+            is_approved = "APPROVED" in feedback.upper()
             if is_approved:
-                return True, draft, None
+                return True, draft, feedback
                 
             feedback_history += f"\nAttempt {i+1} feedback: {feedback}"
             

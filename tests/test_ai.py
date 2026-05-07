@@ -1,9 +1,17 @@
 # tests/test_ai.py
 import pytest
-import os
 from unittest.mock import patch, MagicMock, AsyncMock
 from openai import OpenAIError
 from src.ai import AIPipeline
+from src.config import settings
+
+@pytest.fixture(autouse=True)
+def mock_settings():
+    """Mock settings for tests."""
+    original_api_key = settings.openrouter_api_key
+    settings.openrouter_api_key = "test"
+    yield
+    settings.openrouter_api_key = original_api_key
 
 @pytest.mark.asyncio
 @patch("src.ai.AsyncOpenAI")
@@ -17,15 +25,15 @@ async def test_ai_pipeline_approved_first_try(mock_openai):
     # Mock generator then moderator responses
     mock_client.chat.completions.create.side_effect = [
         MagicMock(choices=[MagicMock(message=MagicMock(content="Draft Post"))]),
-        MagicMock(choices=[MagicMock(message=MagicMock(content="APPROVED"))])
+        MagicMock(choices=[MagicMock(message=MagicMock(content="I think this is APPROVED. Great job!"))])
     ]
     
-    pipeline = AIPipeline(api_key="test")
+    pipeline = AIPipeline()
     status, final_text, feedback = await pipeline.process_block("Test Context")
     
     assert status is True
     assert final_text == "Draft Post"
-    assert feedback is None
+    assert "APPROVED" in feedback.upper()
     
     await pipeline.close()
     mock_client.close.assert_awaited_once()
@@ -49,7 +57,7 @@ async def test_ai_pipeline_rejected_three_times(mock_openai):
         MagicMock(choices=[MagicMock(message=MagicMock(content="Bad 3"))])
     ]
     
-    pipeline = AIPipeline(api_key="test")
+    pipeline = AIPipeline()
     status, final_text, feedback = await pipeline.process_block("Test Context")
     
     assert status is False
@@ -59,9 +67,9 @@ async def test_ai_pipeline_rejected_three_times(mock_openai):
     await pipeline.close()
     mock_client.close.assert_awaited_once()
 
-@patch.dict(os.environ, clear=True)
 def test_ai_pipeline_missing_api_key():
-    with pytest.raises(ValueError, match="API key must be provided or set in OPENROUTER_API_KEY environment variable"):
+    settings.openrouter_api_key = ""
+    with pytest.raises(ValueError, match="API key must be provided in config"):
         AIPipeline()
 
 @pytest.mark.asyncio
@@ -71,7 +79,7 @@ async def test_ai_pipeline_empty_context(mock_openai):
     mock_client.close = AsyncMock()
     mock_openai.return_value = mock_client
 
-    pipeline = AIPipeline(api_key="test")
+    pipeline = AIPipeline()
     with pytest.raises(ValueError, match="Context cannot be empty"):
         await pipeline.process_block("")
     
@@ -90,7 +98,7 @@ async def test_ai_pipeline_openai_error_generation(mock_openai):
     mock_client.chat.completions.create = AsyncMock()
     mock_client.chat.completions.create.side_effect = OpenAIError("API is down")
     
-    pipeline = AIPipeline(api_key="test")
+    pipeline = AIPipeline()
     with pytest.raises(RuntimeError, match="Error during generation: API is down"):
         await pipeline.process_block("Test Context")
         
@@ -109,7 +117,7 @@ async def test_ai_pipeline_openai_error_moderation(mock_openai):
         OpenAIError("API is down")
     ]
     
-    pipeline = AIPipeline(api_key="test")
+    pipeline = AIPipeline()
     with pytest.raises(RuntimeError, match="Error during moderation: API is down"):
         await pipeline.process_block("Test Context")
         
