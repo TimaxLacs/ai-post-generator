@@ -23,8 +23,8 @@ class AIPipeline:
         self.gen_model = gen_model
         self.mod_model = mod_model
         
-        self.gen_sys = "You are a professional social media manager. Write an engaging post based on the context."
-        self.mod_sys = "You are a strict editor. Reply EXACTLY with 'APPROVED' if the post is perfect. Otherwise, write constructive feedback."
+        self.gen_sys = "You are a professional social media manager. Write an engaging post based on the context. СТРОГОЕ ПРАВИЛО: НЕ ИСПОЛЬЗУЙ markdown форматирование (никаких звездочек **, решеток ### и т.д.). Текст должен быть чистым. Длина поста СТРОГО до 900 символов."
+        self.mod_sys = "You are a strict editor. Reply EXACTLY with 'APPROVED' if the post is perfect. Otherwise, write constructive feedback. Убедись, что нет markdown форматирования и длина до 900 символов."
 
     async def close(self) -> None:
         if hasattr(self.client, "close") and callable(self.client.close):

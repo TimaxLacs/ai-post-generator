@@ -42,6 +42,8 @@ async def run() -> bool:
                 if pub_success:
                     print("Published successfully. Archiving...")
                     await state.archive_block(context)
+                    print("Waiting 10 minutes before next post...")
+                    await asyncio.sleep(600)
                     continue
                 else:
                     print("Failed to publish.")

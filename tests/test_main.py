@@ -3,10 +3,11 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import main
 
 @pytest.mark.asyncio
+@patch("main.asyncio.sleep", new_callable=AsyncMock)
 @patch("main.StateManager")
 @patch("main.AIPipeline")
 @patch("main.Publisher")
-async def test_main_success_flow(MockPub, MockAI, MockState):
+async def test_main_success_flow(MockPub, MockAI, MockState, mock_sleep):
     mock_state = MockState.return_value
     mock_ai = MockAI.return_value
     mock_pub = MockPub.return_value
@@ -27,10 +28,11 @@ async def test_main_success_flow(MockPub, MockAI, MockState):
     assert mock_pub.publish.call_count == 2
 
 @pytest.mark.asyncio
+@patch("main.asyncio.sleep", new_callable=AsyncMock)
 @patch("main.StateManager")
 @patch("main.AIPipeline")
 @patch("main.Publisher")
-async def test_main_failure_goes_to_next(MockPub, MockAI, MockState):
+async def test_main_failure_goes_to_next(MockPub, MockAI, MockState, mock_sleep):
     mock_state = MockState.return_value
     mock_ai = MockAI.return_value
     mock_pub = MockPub.return_value
@@ -54,10 +56,11 @@ async def test_main_failure_goes_to_next(MockPub, MockAI, MockState):
     mock_state.archive_block.assert_called_once_with("Good Context")
 
 @pytest.mark.asyncio
+@patch("main.asyncio.sleep", new_callable=AsyncMock)
 @patch("main.StateManager")
 @patch("main.AIPipeline")
 @patch("main.Publisher")
-async def test_main_publish_failure(MockPub, MockAI, MockState):
+async def test_main_publish_failure(MockPub, MockAI, MockState, mock_sleep):
     mock_state = MockState.return_value
     mock_ai = MockAI.return_value
     mock_pub = MockPub.return_value
@@ -81,10 +84,11 @@ async def test_main_publish_failure(MockPub, MockAI, MockState):
     mock_state.archive_block.assert_called_once_with("Good Context")
 
 @pytest.mark.asyncio
+@patch("main.asyncio.sleep", new_callable=AsyncMock)
 @patch("main.StateManager")
 @patch("main.AIPipeline")
 @patch("main.Publisher")
-async def test_main_exception_handling(MockPub, MockAI, MockState):
+async def test_main_exception_handling(MockPub, MockAI, MockState, mock_sleep):
     mock_state = MockState.return_value
     mock_ai = MockAI.return_value
     mock_pub = MockPub.return_value
