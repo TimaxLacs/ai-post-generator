@@ -1,62 +1,82 @@
 import asyncio
-import re
-from dotenv import load_dotenv
-from src.state import StateManager
+import logging
+from src.config import settings
+from src.utils import extract_images, setup_logging
+from src.db import init_db, ingest_markdown, get_next_pending_post, update_post_state
 from src.ai import AIPipeline
-from src.publisher import Publisher
+from src.publishers import PublisherManager
 
-def extract_images(text: str) -> tuple[str, list]:
-    pattern = r"\[image:\s*(.+?)\]"
-    images = re.findall(pattern, text)
-    clean_text = re.sub(pattern, "", text).replace("  ", " ").strip()
-    return clean_text, images
+logger = logging.getLogger(__name__)
 
 async def run() -> bool:
-    load_dotenv()
+    setup_logging()
+    logger.info("Starting AI Post Generator")
     
-    state = StateManager()
+    await init_db()
+    await ingest_markdown()
+    
     ai = AIPipeline()
-    publisher = Publisher()
+    pub_manager = PublisherManager()
     
     try:
         while True:
-            context = await state.pop_next_block()
-            if not context:
-                print("No more topics in queue.")
+            post = await get_next_pending_post()
+            if not post:
+                logger.info("No pending topics in queue.")
                 return True
                 
+            post_id = post["id"]
+            context = post["context"]
+            
             try:
+                # 1. Clean context and extract images securely
                 clean_context, images = extract_images(context)
-                print(f"Processing context: {clean_context[:50]}...")
+                logger.info("Processing post_id %s: %s...", post_id, clean_context[:50])
+                
+                # 2. Update status to generating
+                await update_post_state("queue.db", post_id, draft="", status="generating")
+                
+                # 3. AI Generation
                 approved, draft, feedback = await ai.process_block(clean_context)
                 
                 if not approved:
-                    print("Post rejected after 3 attempts. Saving for manual review...")
-                    # save context so user knows what it was originally
-                    await state.save_manual_review(context, draft, feedback)
-                    continue # Try next block
+                    logger.warning("Post %s rejected after 3 attempts.", post_id)
+                    await update_post_state("queue.db", post_id, draft=draft, status="manual_review", feedback=feedback)
+                    continue
                     
-                print("Post approved! Publishing...")
-                pub_success = await publisher.publish(draft, images)
+                # 4. Publishing
+                logger.info("Post %s approved! Publishing...", post_id)
+                await update_post_state("queue.db", post_id, draft=draft, status="publishing")
                 
-                if pub_success:
-                    print("Published successfully. Archiving...")
-                    await state.archive_block(context)
-                    print("Waiting 10 minutes before next post...")
-                    await asyncio.sleep(600)
-                    continue
+                pub_results = await pub_manager.publish_all(draft, images)
+                
+                tg_ok = pub_results.get("telegram", False)
+                vk_ok = pub_results.get("vk", False)
+                
+                # 5. Determine final state
+                if tg_ok and vk_ok:
+                    logger.info("Post %s published successfully to all channels.", post_id)
+                    await update_post_state("queue.db", post_id, draft=draft, status="published", tg_ok=True, vk_ok=True)
+                elif tg_ok or vk_ok:
+                    logger.warning("Post %s partially published: %s", post_id, pub_results)
+                    await update_post_state("queue.db", post_id, draft=draft, status="partial_failure", feedback="API Error on some platforms", tg_ok=tg_ok, vk_ok=vk_ok)
                 else:
-                    print("Failed to publish.")
-                    # Put it back to manual review if publish failed
-                    await state.save_manual_review(context, draft, "API Publishing Error")
-                    continue
+                    logger.error("Post %s failed to publish entirely.", post_id)
+                    await update_post_state("queue.db", post_id, draft=draft, status="failed", feedback="Complete API Publishing Error")
+                    
+                # Sleep interval after successful (or partially successful) publish
+                if tg_ok or vk_ok:
+                    logger.info("Waiting %s seconds before next post...", settings.post_interval_seconds)
+                    await asyncio.sleep(settings.post_interval_seconds)
+                    
             except Exception as e:
-                print(f"Error processing block: {e}")
-                await state.save_manual_review(context, "", f"Processing Error: {e}")
+                logger.exception("Unhandled error processing post %s", post_id)
+                await update_post_state("queue.db", post_id, draft="", status="failed", feedback=f"Processing Error: {e}")
                 continue
+                
     finally:
         await ai.close()
-        await publisher.close()
+        await pub_manager.close()
 
 if __name__ == "__main__":
     asyncio.run(run())
