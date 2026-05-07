@@ -7,8 +7,8 @@ class AIPipeline:
         self, 
         api_key: Optional[str] = None, 
         base_url: str = "https://openrouter.ai/api/v1",
-        gen_model: str = "openai/gpt-4o-mini",
-        mod_model: str = "openai/gpt-4o"
+        gen_model: str = "google/gemini-2.5-flash:free",
+        mod_model: str = "google/gemini-2.5-flash:free"
     ) -> None:
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
