@@ -1,11 +1,11 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    openrouter_api_key: str = ""
-    tg_bot_token: str = ""
-    tg_channel_id: str = ""
-    vk_access_token: str = ""
-    vk_group_id: str = ""
+    openrouter_api_key: str
+    tg_bot_token: str
+    tg_channel_id: str
+    vk_access_token: str
+    vk_group_id: str
     
     gen_model: str = "google/gemini-2.0-flash-lite-preview-02-05:free"
     mod_model: str = "google/gemini-2.0-flash-lite-preview-02-05:free"

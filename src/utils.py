@@ -19,8 +19,8 @@ def extract_images(text: str, allowed_dir: str = "images") -> Tuple[str, list[st
     
     for img in images:
         abs_img_path = os.path.abspath(img)
-        # Prevent LFI by ensuring the resolved path starts with the allowed base directory
-        if not abs_img_path.startswith(base_dir):
+        # Prevent LFI by ensuring the resolved path is within the allowed base directory
+        if os.path.commonpath([base_dir, abs_img_path]) != base_dir:
             raise ValueError(f"Path traversal detected: {img}")
         if os.path.exists(abs_img_path):
             safe_images.append(abs_img_path)
