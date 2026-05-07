@@ -6,3 +6,5 @@ pytest-mock>=3.12.0
 aiofiles
 pytest-asyncio
 httpx
+pydantic-settings
+aiosqlite
