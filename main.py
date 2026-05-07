@@ -42,7 +42,7 @@ async def run() -> bool:
                 if pub_success:
                     print("Published successfully. Archiving...")
                     await state.archive_block(context)
-                    return True
+                    continue
                 else:
                     print("Failed to publish.")
                     # Put it back to manual review if publish failed
