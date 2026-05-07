@@ -1,12 +1,22 @@
 import pytest
 import httpx
 from unittest.mock import patch, MagicMock, AsyncMock, mock_open
-from src.publisher import Publisher
+from src.publishers import PublisherManager
+
+@pytest.fixture
+def mock_settings():
+    with patch("src.publishers.telegram.settings") as mock_tg_settings, \
+         patch("src.publishers.vk.settings") as mock_vk_settings:
+        mock_tg_settings.tg_bot_token = "test_tg"
+        mock_tg_settings.tg_channel_id = "test_chat"
+        mock_vk_settings.vk_access_token = "test_vk"
+        mock_vk_settings.vk_group_id = "test_group"
+        yield mock_tg_settings, mock_vk_settings
 
 @pytest.mark.asyncio
-@patch("src.publisher.httpx.AsyncClient")
+@patch("src.publishers.httpx.AsyncClient")
 @patch("builtins.open", new_callable=mock_open, read_data=b"dummy_image_data")
-async def test_publish_to_tg_and_vk(mock_file, mock_httpx):
+async def test_publish_to_tg_and_vk(mock_file, mock_httpx, mock_settings):
     mock_client = AsyncMock()
     mock_httpx.return_value = mock_client
     
@@ -40,11 +50,12 @@ async def test_publish_to_tg_and_vk(mock_file, mock_httpx):
 
     mock_client.post.side_effect = mock_post
     
-    publisher = Publisher(tg_token="test_tg", tg_chat="test_chat", vk_token="test_vk", vk_group="test_group")
+    manager = PublisherManager()
     
-    success = await publisher.publish("Test post content", ["url"])
+    success_dict = await manager.publish_all("Test post content", ["url"])
     
-    assert success is True
+    assert success_dict == {"telegram": True, "vk": True}
+    
     # Verify TG call with photo
     mock_client.post.assert_any_call(
         "https://api.telegram.org/bottest_tg/sendPhoto",
@@ -64,9 +75,9 @@ async def test_publish_to_tg_and_vk(mock_file, mock_httpx):
     )
 
 @pytest.mark.asyncio
-@patch("src.publisher.httpx.AsyncClient")
+@patch("src.publishers.httpx.AsyncClient")
 @patch("builtins.open", new_callable=mock_open, read_data=b"dummy_image_data")
-async def test_publish_to_tg_long_caption(mock_file, mock_httpx):
+async def test_publish_to_tg_long_caption(mock_file, mock_httpx, mock_settings):
     mock_client = AsyncMock()
     mock_httpx.return_value = mock_client
     
@@ -100,16 +111,17 @@ async def test_publish_to_tg_long_caption(mock_file, mock_httpx):
 
     mock_client.post.side_effect = mock_post
     
-    publisher = Publisher(tg_token="test_tg", tg_chat="test_chat", vk_token="test_vk", vk_group="test_group")
+    manager = PublisherManager()
     
     long_text = "A" * 1025
-    success = await publisher.publish(long_text, ["url"])
+    success_dict = await manager.publish_all(long_text, ["url"])
     
-    assert success is True
+    assert success_dict == {"telegram": True, "vk": True}
+    
     # Verify TG call with photo (no caption)
     mock_client.post.assert_any_call(
         "https://api.telegram.org/bottest_tg/sendPhoto",
-        data={"chat_id": "test_chat"},
+        data={"chat_id": "test_chat", "caption": ""},
         files={"photo": mock_file()}
     )
     # Verify TG call with sendMessage
@@ -119,17 +131,17 @@ async def test_publish_to_tg_long_caption(mock_file, mock_httpx):
     )
 
 @pytest.mark.asyncio
-@patch("src.publisher.httpx.AsyncClient")
-async def test_publish_error_path(mock_httpx):
+@patch("src.publishers.httpx.AsyncClient")
+async def test_publish_error_path(mock_httpx, mock_settings):
     mock_client = AsyncMock()
     mock_httpx.return_value = mock_client
     
     # Simulate an HTTP error for both requests
     mock_client.post.side_effect = httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock())
     
-    publisher = Publisher(tg_token="test_tg", tg_chat="test_chat", vk_token="test_vk", vk_group="test_group")
-    success = await publisher.publish("Test post content", []) # No image for this test
+    manager = PublisherManager()
+    success_dict = await manager.publish_all("Test post content", []) # No image for this test
     
-    assert success is False
+    assert success_dict == {"telegram": False, "vk": False}
     # Verify both calls were still attempted due to asyncio.gather
     assert mock_client.post.call_count == 2
